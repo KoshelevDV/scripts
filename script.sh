@@ -74,7 +74,7 @@ parse_params() {
     readarray -t projects_to_recreate < "${2-}"
       shift
       ;;
-    -b | branch)
+    -b | branches)
     IFS=',' read -r -a branches <<< "${2-}"
       shift
       ;;
@@ -90,6 +90,7 @@ parse_params() {
   [[ -z "${host-}" ]]  && die "Missing required parameter: host" 
   [[ -z "${group-}" ]] && die "Missing required parameter: group"
   [[ -z "${token-}" ]] && die "Missing required parameter: token"
+  [[ -z "${branches-}" ]] && die "Missing required parameter: branches"
   # [[ ${#args[@]} -eq 0 ]] && die "Missing script arguments"
 
   return 0
@@ -124,12 +125,12 @@ check_and_recreate() {
 
 recreate_branch() {
     git pull > /dev/null
-    routput=$(git diff origin/$1...main || true)
+    local routput=$(git diff origin/$1...main || true)
     if [ ! -z "$routput" ]; then
       echo "> $1 differs from main"
-      git push origin --delete $1 || true
+      git push $project --delete $1 || true
       git checkout -b $1
-      git push -u origin $1
+      git push -u $project $1
       recraeted[$branch]=$((recraeted[$branch]+1))
     fi
 }
@@ -147,7 +148,10 @@ for ((page=1;page<=page_count;page++)); do
     length=$(echo $projects |jq length )
 
     for ((i=0;i<length;i++)); do
-        project=$(echo $projects | jq .[$i].ssh_url_to_repo | tr -d '"')
+        # project=$(echo $projects | jq .[$i].ssh_url_to_repo | tr -d '"')
+        project=$host/$(echo $projects | jq .[$i].path_with_namespace | tr -d '"')
+        project="https://gitlab-ci-token:${token}@${project}.git"
+        echo $project
         project_name=$(echo $projects | jq .[$i].name | tr -d '"')
         project_path=$(echo $projects | jq .[$i].path | tr -d '"')
         project_web_url=$(echo $projects | jq .[$i].web_url | tr -d '"')
