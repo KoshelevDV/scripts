@@ -74,6 +74,10 @@ parse_params() {
     readarray -t projects_to_recreate < "${2-}"
       shift
       ;;
+    -b | branch)
+    IFS=',' read -r -a branches <<< "${2-}"
+      shift
+      ;;
     -?*) die "Unknown option: $1" ;;
     *) break ;;
     esac
@@ -95,14 +99,40 @@ parse_params "$@"
 setup_colors
 
 # script logic here
-devs=0
-stages=0
+declare -A recraeted
+for branch in "${branches[@]}"; do
+  recraeted[$branch]+=0
+done
 broken=()
 
-# projects_to_recreate=(
-# "nuget_test"
-# "nuget-test-2"
-# )
+check_and_recreate() {
+  echo "> [$project_name] $project_web_url"
+
+  git clone --quiet $project > /dev/null
+
+  status=$?
+  if [ "$status" != "0" ]; then
+      broken+=("$project_web_url")
+  fi
+
+  cd $project_path
+  for branch in "${branches[@]}"; do
+    recreate_branch $branch
+  done
+  cd ../
+}
+
+recreate_branch() {
+    git pull > /dev/null
+    routput=$(git diff origin/$1...main || true)
+    if [ ! -z "$routput" ]; then
+      echo "> $1 differs from main"
+      git push origin --delete $1 || true
+      git checkout -b $1
+      git push -u origin $1
+      recraeted[$branch]=$((recraeted[$branch]+1))
+    fi
+}
 
 mkdir $script_dir/.temp
 cd $script_dir/.temp
@@ -122,47 +152,21 @@ for ((page=1;page<=page_count;page++)); do
         project_path=$(echo $projects | jq .[$i].path | tr -d '"')
         project_web_url=$(echo $projects | jq .[$i].web_url | tr -d '"')
         
-        if [[ " ${projects_to_recreate[*]} " =~ " ${project_path} " ]]; then
-
-            echo "> [$project_name] $project_web_url"
-
-            git clone --quiet $project > /dev/null
-
-            status=$?
-            if [ "$status" != "0" ]; then
-                broken+=("$project_web_url")
-            fi
-
-            cd $project_path
-
-            git pull > /dev/null
-            routput=$(git diff origin/dev...main)
-            if [ ! -z "$routput" ]; then
-                echo "> dev differs from main"
-                git push origin --delete dev
-                git checkout -b dev
-                git push -u origin dev
-                devs=$((devs+1))
-            fi
-
-            git pull > /dev/null
-            routput=$(git diff origin/stage...main)
-            if [ ! -z "$routput" ]; then
-                echo "> stage differs from main"
-                git push origin --delete stage
-                git checkout -b stage
-                git push -u origin stage
-                stages=$((stages+1))
-            fi
-            
-            cd ../
+        if [[ ! -z "${projects_to_recreate-}" ]]; then
+          if [[ " ${projects_to_recreate[*]} " =~ " ${project_path} " ]]; then
+              check_and_recreate
+          fi
+        else
+          check_and_recreate
         fi
     done
 done
 cd ../
 
-msg "RECREATED DEV BRANCES: ${devs}"
-msg "RECREATED STAGE BRANCES: $stages"
+for branch in "${!recraeted[@]}"; do
+  msg "RECREATED $branch BRANCES: ${recraeted[$branch]}"
+done
+
 if [ "$(echo ${#broken[*]})" != "0" ]; then
     msg "Fail to recreate branches"
     for item in ${broken[*]}; do
