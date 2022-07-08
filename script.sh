@@ -9,9 +9,7 @@ usage() {
   cat <<EOF
 Usage: $(basename "${BASH_SOURCE[0]}") -h <gitlab_host> -g <group_id> -t <token> -b <dev,stage,...> [-f <file_path>]
 
-Script use private token to access Gitlab API to get list of project in group. 
-SSH key is used to pull\push to repository (should specify ssh key path for ci-cd).
-By default script recreate branches for all projects in group if file with projects isn't specified.
+Description
 
 Available options:
 
@@ -20,7 +18,7 @@ Available options:
 -h, --host      Gitlab host
 -g, --group     Group id
 -t, --token     Private or deploy token
--b, --branch    Branch to recreate
+-b, --branch    Branches to recreate
 -f, --file      File with list of projects
 -r, --right     flag - diff <origin/branch>...main
 -l, --left      flag - diff main...<origin/branch>
@@ -53,6 +51,9 @@ die() {
 }
 
 parse_params() {
+
+  args=("$@")
+  
   while :; do
     case "${1-}" in
     --help) usage ;;
@@ -84,10 +85,11 @@ parse_params() {
     shift
   done
 
-  args=("$@")
-
+  # args=("$@")
+  
   # check required params and arguments
-  [[ -z "${host-}" ]]  && die "Missing required parameter: host" 
+  [[ -z "${args-}" ]] && usage
+  [[ -z "${host-}" ]] && die "Missing required parameter: host" 
   [[ -z "${group-}" ]] && die "Missing required parameter: group"
   [[ -z "${token-}" ]] && die "Missing required parameter: token"
   [[ -z "${branches-}" ]] && die "Missing required parameter: branches"
@@ -151,7 +153,6 @@ for ((page=1;page<=page_count;page++)); do
         # project=$(echo $projects | jq .[$i].ssh_url_to_repo | tr -d '"')
         project=$host/$(echo $projects | jq .[$i].path_with_namespace | tr -d '"')
         project="https://gitlab-ci-token:${token}@${project}.git"
-        echo $project
         project_name=$(echo $projects | jq .[$i].name | tr -d '"')
         project_path=$(echo $projects | jq .[$i].path | tr -d '"')
         project_web_url=$(echo $projects | jq .[$i].web_url | tr -d '"')
